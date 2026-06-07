@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ITパスポート 4択ドリル</title>
+<style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    h1 { text-align: center; color: #0056b3; font-size: 24px; margin-bottom: 20px; }
+    p { line-height: 1.6; }
+    #question-text { font-size: 18px; line-height: 1.6; margin-bottom: 20px; }
+    .choice-btn { display: block; width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e0e0e0; border-radius: 8px; background: #fafafa; cursor: pointer; text-align: left; font-size: 16px; transition: all 0.2s; }
+    .choice-btn:hover:not(:disabled) { background: #eef2f5; border-color: #0056b3; }
+    .choice-btn:disabled { cursor: not-allowed; opacity: 0.8; }
+    .correct { background: #d4edda !important; border-color: #c3e6cb !important; color: #155724; font-weight: bold; }
+    .incorrect { background: #f8d7da !important; border-color: #f5c6cb !important; color: #721c24; }
+    #feedback { font-weight: bold; font-size: 18px; margin-top: 15px; text-align: center; min-height: 27px; }
+    
+    .action-btn { display: block; width: 100%; margin-top: 20px; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; background: #0056b3; color: #fff; border: none; border-radius: 8px; transition: background 0.2s; }
+    .action-btn:hover { background: #004494; }
+    .btn-green { background: #28a745; }
+    .btn-green:hover { background: #218838; }
+
+    #quiz-container, #result-container { display: none; }
+    
+    #score { font-size: 28px; font-weight: bold; color: #e53935; margin: 20px 0; }
+    .progress { text-align: right; color: #666; font-size: 14px; margin-bottom: 10px; font-weight: bold; }
+
+    .disclaimer { font-size: 12px; color: #666; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; text-align: left; }
+</style>
+</head>
+<body>
+
+<div class="container" id="start-container" style="text-align: center;">
+    <h1>ITパスポート 4択ドリル</h1>
+    
+    <p id="loading-msg" style="font-weight: bold; color: #0056b3;">問題データを読み込んでいます...</p>
+    
+    <div id="ready-content" style="display: none;">
+        <p>読み込みが完了しました！<br>全<span id="total-q"></span>問から、10問ずつ出題されます。</p>
+        <button class="action-btn" id="start-btn">スタート</button>
+    </div>
+
+    <div class="disclaimer">
+        ※本ドリルの問題は、IPA（情報処理推進機構）が公開するITパスポート試験の過去問題を引用・改変して作成したものです。問い合わせはX:@shounokotoまで。本ドリルおよび掲載されている問題内容に関するIPAへのお問い合わせはご遠慮ください。
+    </div>
+</div>
+
+<div class="container" id="quiz-container">
+    <h1>ITパスポート 4択ドリル</h1>
+    <div class="progress" id="progress-text"></div>
+    <div id="question-text">読み込み中...</div>
+    <div id="choices-container"></div>
+    <div id="feedback"></div>
+    <button class="action-btn" id="next-btn" style="display:none;">次の問題へ</button>
+</div>
+
+<div class="container" id="result-container" style="text-align: center;">
+    <h1>結果発表</h1>
+    <p id="score"></p>
+    <button class="action-btn btn-green" id="next-set-btn" style="margin-bottom: 10px;">次の10問へ進む</button>
+    <button class="action-btn" id="retry-btn" style="background: #6c757d;">最初からやり直す</button>
+</div>
+
+<script>
+    // ==========================================
+    // 設定: GitHubにアップロードするCSVのファイル名
+    // ==========================================
+    const CSV_FILE_NAME = 'questions.csv';
+
+    let allQuizData = [];
+    const QUESTIONS_PER_SET = 10;
+    
+    let currentSetIndex = 0;
+    let currentQuestionIndexInSet = 0;
+    let currentSetScore = 0;
+    let currentQuizList = [];
+
+    // DOM Elements
+    const startContainer = document.getElementById('start-container');
+    const quizContainer = document.getElementById('quiz-container');
+    const resultContainer = document.getElementById('result-container');
+    
+    const loadingMsg = document.getElementById('loading-msg');
+    const readyContent = document.getElementById('ready-content');
+    const questionText = document.getElementById('question-text');
+    const choicesContainer = document.getElementById('choices-container');
+    const feedback = document.getElementById('feedback');
+    const nextBtn = document.getElementById('next-btn');
+    const scoreText = document.getElementById('score');
+    const progressText = document.getElementById('progress-text');
+    const totalQText = document.getElementById('total-q');
+    const nextSetBtn = document.getElementById('next-set-btn');
+
+    // Event Listeners
+    document.getElementById('start-btn').addEventListener('click', startQuizSet);
+    nextBtn.addEventListener('click', handleNextQuestion);
+    nextSetBtn.addEventListener('click', startQuizSet);
+    document.getElementById('retry-btn').addEventListener('click', () => location.reload());
+
+    // ページ読み込み時に自動でCSVを取得する (fetch API)
+    document.addEventListener("DOMContentLoaded", () => {
+        fetch(CSV_FILE_NAME)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('CSVの取得に失敗しました。ファイル名やパスを確認してください。');
+                }
+                return response.text();
+            })
+            .then(text => {
+                processCSV(text);
+                loadingMsg.style.display = 'none';
+                readyContent.style.display = 'block';
+            })
+            .catch(error => {
+                console.error(error);
+                loadingMsg.innerText = 'エラー: 問題データの読み込みに失敗しました。';
+                loadingMsg.style.color = 'red';
+            });
+    });
+
+    // 簡易CSVパーサー
+    function parseCSV(text) {
+        let result = [];
+        let row = [];
+        let inQuotes = false;
+        let val = "";
+        for (let i = 0; i < text.length; i++) {
+            let c = text[i];
+            let next = text[i+1];
+            if (c === '"' && inQuotes && next === '"') {
+                val += '"'; i++; 
+            } else if (c === '"') {
+                inQuotes = !inQuotes;
+            } else if (c === ',' && !inQuotes) {
+                row.push(val); val = "";
+            } else if ((c === '\n' || c === '\r') && !inQuotes) {
+                if (c === '\r' && next === '\n') i++; 
+                row.push(val); 
+                if (row.some(x => x !== "")) result.push(row); 
+                row = []; val = "";
+            } else {
+                val += c;
+            }
+        }
+        if (val !== "" || row.length > 0) {
+            row.push(val); result.push(row);
+        }
+        return result;
+    }
+
+    function processCSV(text) {
+        const rows = parseCSV(text);
+        if(rows.length < 2) { 
+            alert("データが正しく読み込めませんでした。"); 
+            return; 
+        }
+
+        let data = [];
+        let allAnswers = [];
+        let answersByPq = {};
+
+        // ヘッダー行をスキップ (i=1から)
+        for(let i=1; i<rows.length; i++) {
+            const row = rows[i];
+            if(row.length < 3) continue;
+
+            const q = row[0] ? row[0].trim() : "";
+            const pq = row[1] ? row[1].trim() : "";
+            const ans = row[2] ? row[2].trim() : "";
+
+            if(!q || !ans || ans === "-") continue;
+
+            let choices = [ans];
+            for(let j=3; j<row.length; j++) {
+                const c = row[j] ? row[j].trim() : "";
+                if(c && !choices.includes(c)) {
+                    choices.push(c);
+                }
+            }
+
+            data.push({ question: q, pastQuestion: pq, answer: ans, choices: choices });
+            allAnswers.push(ans);
+            if(pq) {
+                if(!answersByPq[pq]) answersByPq[pq] = [];
+                if(!answersByPq[pq].includes(ans)) answersByPq[pq].push(ans);
+            }
+        }
+
+        allAnswers = [...new Set(allAnswers)];
+
+        // 選択肢が4つ未満の場合の補充処理
+        data.forEach(item => {
+            if(item.choices.length < 4) {
+                if(item.pastQuestion && answersByPq[item.pastQuestion]) {
+                    let pqPool = answersByPq[item.pastQuestion].filter(x => !item.choices.includes(x));
+                    pqPool = shuffleArray(pqPool);
+                    item.choices.push(...pqPool.slice(0, 4 - item.choices.length));
+                }
+                if(item.choices.length < 4) {
+                    let globalPool = allAnswers.filter(x => !item.choices.includes(x));
+                    globalPool = shuffleArray(globalPool);
+                    item.choices.push(...globalPool.slice(0, 4 - item.choices.length));
+                }
+            }
+            item.choices = item.choices.slice(0, 4);
+            item.choices = shuffleArray(item.choices);
+        });
+
+        allQuizData = shuffleArray(data);
+        totalQText.innerText = allQuizData.length;
+    }
+
+    function shuffleArray(array) {
+        let curId = array.length;
+        while (0 !== curId) {
+            let randId = Math.floor(Math.random() * curId);
+            curId -= 1;
+            let tmp = array[curId];
+            array[curId] = array[randId];
+            array[randId] = tmp;
+        }
+        return array;
+    }
+
+    function startQuizSet() {
+        const startIndex = currentSetIndex * QUESTIONS_PER_SET;
+        currentQuizList = allQuizData.slice(startIndex, startIndex + QUESTIONS_PER_SET);
+        
+        if(currentQuizList.length === 0) {
+            alert("すべての問題を解き終わりました！");
+            location.reload();
+            return;
+        }
+
+        currentQuestionIndexInSet = 0;
+        currentSetScore = 0;
+        
+        startContainer.style.display = 'none';
+        resultContainer.style.display = 'none';
+        quizContainer.style.display = 'block';
+        
+        loadQuestion();
+    }
+
+    function loadQuestion() {
+        feedback.innerText = '';
+        nextBtn.style.display = 'none';
+        choicesContainer.innerHTML = '';
+
+        const currentQuiz = currentQuizList[currentQuestionIndexInSet];
+        const globalQuestionNum = (currentSetIndex * QUESTIONS_PER_SET) + currentQuestionIndexInSet + 1;
+        
+        progressText.innerText = `現在のセット: ${currentQuestionIndexInSet + 1} / ${currentQuizList.length} 問目 (全${globalQuestionNum}/${allQuizData.length}問)`;
+        questionText.innerText = currentQuiz.question;
+
+        currentQuiz.choices.forEach(choice => {
+            const btn = document.createElement('button');
+            btn.innerText = choice;
+            btn.classList.add('choice-btn');
+            btn.onclick = () => selectAnswer(btn, choice, currentQuiz.answer);
+            choicesContainer.appendChild(btn);
+        });
+    }
+
+    function selectAnswer(btn, selectedChoice, correctAnswer) {
+        const buttons = document.querySelectorAll('.choice-btn');
+        buttons.forEach(b => b.disabled = true);
+
+        if (selectedChoice === correctAnswer) {
+            btn.classList.add('correct');
+            feedback.innerText = '⭕ 正解！';
+            feedback.style.color = '#155724';
+            currentSetScore++;
+        } else {
+            btn.classList.add('incorrect');
+            feedback.innerText = `❌ 不正解... (正解は「${correctAnswer}」)`;
+            feedback.style.color = '#721c24';
+            
+            buttons.forEach(b => {
+                if (b.innerText === correctAnswer) {
+                    b.classList.add('correct');
+                }
+            });
+        }
+
+        if (currentQuestionIndexInSet === currentQuizList.length - 1) {
+            nextBtn.innerText = "結果を見る";
+        } else {
+            nextBtn.innerText = "次の問題へ";
+        }
+        nextBtn.style.display = 'block';
+    }
+
+    function handleNextQuestion() {
+        currentQuestionIndexInSet++;
+        
+        if (currentQuestionIndexInSet >= currentQuizList.length) {
+            showResult();
+        } else {
+            loadQuestion();
+        }
+    }
+
+    function showResult() {
+        quizContainer.style.display = 'none';
+        resultContainer.style.display = 'block';
+        
+        const rate = Math.round((currentSetScore / currentQuizList.length) * 100);
+        scoreText.innerHTML = `${currentQuizList.length}問中 <span style="font-size:36px">${currentSetScore}</span> 問正解！<br><br>正答率: ${rate}%`;
+        
+        currentSetIndex++;
+        
+        if (currentSetIndex * QUESTIONS_PER_SET >= allQuizData.length) {
+            nextSetBtn.style.display = 'none';
+        } else {
+            nextSetBtn.style.display = 'block';
+        }
+    }
+</script>
+</body>
+</html>
