@@ -28,9 +28,16 @@
     .progress { text-align: right; color: #666; font-size: 14px; margin-bottom: 10px; font-weight: bold; }
 
     .disclaimer { font-size: 12px; color: #666; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; text-align: left; }
+
+    .report-btn { position: fixed; top: 15px; right: 15px; background-color: #ff5722; color: white; padding: 8px 12px; border-radius: 5px; text-decoration: none; font-size: 14px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1000; transition: background 0.2s; }
+    .report-btn:hover { background-color: #e64a19; }
+    .past-question-label { display: inline-block; background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; padding: 4px 8px; border-radius: 4px; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
 </style>
 </head>
 <body>
+<!-- 誤字脱字報告フォーム -->
+<a href="https://docs.google.com/forms/d/e/1FAIpQLScXWncey59Ld-bkn6hGQFiTHR3dltBZc-LUf4s8BsS1fbqpJw/viewform?usp=publish-editor" target="_blank" rel="noopener noreferrer" class="report-btn">🚨 誤字脱字を報告</a>
+
 
 <div class="container" id="start-container" style="text-align: center;">
     <h1>ITパスポート 4択ドリル</h1>
@@ -50,6 +57,7 @@
 <div class="container" id="quiz-container">
     <h1>ITパスポート 4択ドリル</h1>
     <div class="progress" id="progress-text"></div>
+    <div id="past-question-label" class="past-question-label" style="display:none;"></div>
     <div id="question-text">読み込み中...</div>
     <div id="choices-container"></div>
     <div id="feedback"></div>
@@ -85,6 +93,7 @@
     const loadingMsg = document.getElementById('loading-msg');
     const readyContent = document.getElementById('ready-content');
     const questionText = document.getElementById('question-text');
+    const pastQuestionLabel = document.getElementById('past-question-label');
     const choicesContainer = document.getElementById('choices-container');
     const feedback = document.getElementById('feedback');
     const nextBtn = document.getElementById('next-btn');
@@ -253,7 +262,15 @@
         const globalQuestionNum = (currentSetIndex * QUESTIONS_PER_SET) + currentQuestionIndexInSet + 1;
         
         progressText.innerText = `現在のセット: ${currentQuestionIndexInSet + 1} / ${currentQuizList.length} 問目 (全${globalQuestionNum}/${allQuizData.length}問)`;
+        
+        if (currentQuiz.pastQuestion) {
+            pastQuestionLabel.innerText = "出題元: " + currentQuiz.pastQuestion;
+            pastQuestionLabel.style.display = "inline-block";
+        } else {
+            pastQuestionLabel.style.display = "none";
+        }
         questionText.innerText = currentQuiz.question;
+
 
         currentQuiz.choices.forEach(choice => {
             const btn = document.createElement('button');
